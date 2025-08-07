@@ -1,5 +1,4 @@
-// Collecting Values from the input
-
+// Select input fields and DOM elements
 const studentName = document.querySelector(".studentName");
 const studentId = document.querySelector(".studentId");
 const studentEmail = document.querySelector(".studentEmail");
@@ -8,106 +7,224 @@ const submitButton = document.querySelector(".submitButton");
 const studentTableBody = document.querySelector("#studentTable tbody");
 const studentForm = document.querySelector("form");
 
-submitButton.addEventListener("click", addEvent);
+// localStorage key for saving student data
+const STORAGE_KEY = "studentsData";
 
+// Track the row currently being edited (null means add mode)
 let editRow = null;
 
-// Function check if the input is just numbers or not
+/**
+ * Check if a string contains only digits
+ * @param {string} value
+ * @returns {boolean}
+ */
 function isOnlyNumbers(value) {
   return /^\d+$/.test(value);
 }
 
-function updateTableScrollbar() {
-  const container = document.getElementById("tableContainer");
-  const tableHeight = container.scrollHeight;
-  const maxHeight = 400;
-
-  // If content height exceeds maxHeight => scrollbar appears (overflow-y: auto), else no scrollbar
-  if (container.clientHeight >= maxHeight) {
-    container.style.overflowY = "auto";
-  } else {
-    container.style.overflowY = "hidden";
-  }
+/**
+ * Load student data array from localStorage
+ * @returns {Array} students array
+ */
+function loadStudents() {
+  const data = localStorage.getItem(STORAGE_KEY);
+  return data ? JSON.parse(data) : [];
 }
 
-// Main function
-function addEvent() {
-  if (
-    studentName.value == "" ||
-    studentEmail.value == "" ||
-    studentId.value == "" ||
-    studentNumber.value == ""
-  ) {
-    alert("Input proper values");
-    return;
-  }
-  // Checking if the studentID is just numbers or not
-  if (!isOnlyNumbers(studentId.value.trim())) {
-    alert("Student ID must be a number only.");
-    return;
-  }
-  // Checking if the studentNumber is just numbers or not and under 10
-  if (
-    !isOnlyNumbers(studentNumber.value.trim()) ||
-    studentNumber.value.trim().length < 10
-  ) {
-    alert("Contact number must be numeric and at least 10 digits.");
-    return;
-  }
-  // If editRow is positive then edit the content added else add new
-  if (editRow) {
-    editRow.children[0].textContent = studentName.value;
-    editRow.children[1].textContent = studentId.value;
-    editRow.children[2].textContent = studentEmail.value;
-    editRow.children[3].textContent = studentNumber.value;
+/**
+ * Save student data array to localStorage
+ * @param {Array} students
+ */
+function saveStudents(students) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+}
 
-    editRow = null;
-    submitButton.textContent = "Add Student";
-  } else {
+/**
+ * Render student records from localStorage into the table
+ */
+function renderStudents() {
+  const students = loadStudents();
+  studentTableBody.innerHTML = "";
+
+  students.forEach((student) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-    <td>${studentName.value}</td>
-    <td>${studentId.value}</td>
-    <td>${studentEmail.value}</td>
-    <td>${studentNumber.value}</td>
-    <td class="actions">
-        <button class="edit-btn" >Edit</button>
-        <button class="delete-btn" >Delete</button>
-    </td>
+      <td>${student.studentName}</td>
+      <td>${student.studentId}</td>
+      <td>${student.email}</td>
+      <td>${student.contactNumber}</td>
+      <td class="actions">
+          <button class="edit-btn">Edit</button>
+          <button class="delete-btn">Delete</button>
+      </td>
     `;
     studentTableBody.appendChild(row);
-  }
+  });
 
-  studentForm.reset();
   updateTableScrollbar();
 }
 
-studentTableBody.addEventListener("click", modifyItem);
+/**
+ * Update vertical scrollbar of the table container dynamically.
+ * Shows scrollbar if row count > 3, hides otherwise.
+ */
+function updateTableScrollbar() {
+  const container = document.getElementById("tableContainer");
+  const tbody = studentTableBody;
 
-function modifyItem(e) {
-  const val = e.target;
+  if (tbody.rows.length > 3) {
+    container.style.overflowY = "auto"; // Show scrollbar
+  } else {
+    container.style.overflowY = "hidden"; // Hide scrollbar
+  }
+}
 
-  if (val.classList[0] == "delete-btn") {
-    const parent = val.parentElement;
-    const superParent = parent.parentElement;
-    superParent.remove();
-    if (editRow === row) {
-      editRow = null;
-      studentForm.reset();
-      submitButton.textContent = "Add Student";
+/**
+ * Clear the form inputs and reset submit button and edit mode
+ */
+function clearFormAndReset() {
+  studentForm.reset();
+  editRow = null;
+  submitButton.textContent = "Add Student";
+}
+
+/**
+ * Pull values from the form inputs and trim them
+ * @returns {Object} inputs object or null if empty
+ */
+function getFormValues() {
+  return {
+    name: studentName.value.trim(),
+    id: studentId.value.trim(),
+    email: studentEmail.value.trim(),
+    contact: studentNumber.value.trim(),
+  };
+}
+
+/**
+ * Validate input fields with required constraints
+ * Alerts if invalid; returns true if all valid
+ */
+function validateInputs({ name, id, email, contact }) {
+  if (!name || !id || !email || !contact) {
+    alert("Please fill in all fields.");
+    return false;
+  }
+  if (!/^[A-Za-z\s]+$/.test(name)) {
+    alert("Student Name must contain only letters and spaces.");
+    return false;
+  }
+  if (!isOnlyNumbers(id)) {
+    alert("Student ID must contain only numbers.");
+    return false;
+  }
+  // Basic email validation
+  if (!/\S+@\S+\.\S+/.test(email)) {
+    alert("Please enter a valid email address.");
+    return false;
+  }
+  if (!isOnlyNumbers(contact) || contact.length < 10) {
+    alert("Contact Number must be numeric and at least 10 digits.");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Add or update student record based on edit mode
+ */
+function addEvent(e) {
+  e.preventDefault();
+
+  const { name, id, email, contact } = getFormValues();
+
+  if (!validateInputs({ name, id, email, contact })) {
+    return; // stop if validation fails
+  }
+
+  let students = loadStudents();
+
+  if (editRow) {
+    // Updating existing record
+    const editedId = editRow.children[1].textContent;
+    const index = students.findIndex((s) => s.studentId === editedId);
+
+    // Ensure the new ID is either unchanged or unique
+    if (index !== -1) {
+      if (id !== editedId && students.some((s) => s.studentId === id)) {
+        alert("Student ID already exists. Please use a unique ID.");
+        return;
+      }
+      // Update the student record
+      students[index] = {
+        studentName: name,
+        studentId: id,
+        email: email,
+        contactNumber: contact,
+      };
+    } else {
+      alert("Error: Could not find student to update.");
+      return;
     }
-    //   When removing the element to update scroll bar
-    updateTableScrollbar();
-  } else if (val.classList[0] == "edit-btn") {
-    const row = val.closest("tr");
-    // Fill the form fields with that row's data
+  } else {
+    // Adding new record, check duplicate ID
+    if (students.some((s) => s.studentId === id)) {
+      alert("Student ID already exists. Please use a unique ID.");
+      return;
+    }
+    students.push({
+      studentName: name,
+      studentId: id,
+      email: email,
+      contactNumber: contact,
+    });
+  }
+
+  // Save updated student list and refresh table
+  saveStudents(students);
+  renderStudents();
+  clearFormAndReset();
+}
+
+/**
+ * Handle clicks on Edit and Delete buttons inside the table
+ */
+function modifyItem(e) {
+  const target = e.target;
+
+  if (target.classList.contains("delete-btn")) {
+    const row = target.closest("tr");
+    const studentIdToDelete = row.children[1].textContent;
+
+    let students = loadStudents();
+    students = students.filter((s) => s.studentId !== studentIdToDelete);
+
+    saveStudents(students);
+    renderStudents();
+
+    if (editRow === row) {
+      clearFormAndReset();
+    }
+  } else if (target.classList.contains("edit-btn")) {
+    const row = target.closest("tr");
+
+    // Fill form for editing
     studentName.value = row.children[0].textContent;
     studentId.value = row.children[1].textContent;
     studentEmail.value = row.children[2].textContent;
     studentNumber.value = row.children[3].textContent;
 
-    // Remember which row we are editing
     editRow = row;
     submitButton.textContent = "Update Student";
   }
 }
+
+// Event listeners
+submitButton.addEventListener("click", addEvent);
+studentTableBody.addEventListener("click", modifyItem);
+
+// Load data and render table on page load
+window.addEventListener("DOMContentLoaded", () => {
+  renderStudents();
+  clearFormAndReset();
+});
